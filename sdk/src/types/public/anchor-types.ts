@@ -21,15 +21,17 @@ export enum AccountName {
   Whirlpool = "Whirlpool",
   FeeTier = "FeeTier",
   PositionBundle = "PositionBundle",
+  WhirlpoolsConfigExtension = "WhirlpoolsConfigExtension",
+  TokenBadge = "TokenBadge",
 }
 
-const IDL = WhirlpoolIDL as Idl;
+export const WHIRLPOOL_IDL = WhirlpoolIDL as Idl;
 
 /**
  * The Anchor coder for the Whirlpool program.
  * @category Solana Accounts
  */
-export const WHIRLPOOL_CODER = new BorshAccountsCoder(IDL);
+export const WHIRLPOOL_CODER = new BorshAccountsCoder(WHIRLPOOL_IDL);
 
 /**
  * Get the size of an account owned by the Whirlpool program in bytes.
@@ -37,7 +39,9 @@ export const WHIRLPOOL_CODER = new BorshAccountsCoder(IDL);
  * @returns Size in bytes of the account
  */
 export function getAccountSize(accountName: AccountName) {
-  const size = WHIRLPOOL_CODER.size(IDL.accounts!.find((account) => account.name === accountName)!);
+  const size = WHIRLPOOL_CODER.size(
+    WHIRLPOOL_IDL.accounts!.find((account) => account.name === accountName)!
+  );
   return size + RESERVED_BYTES[accountName];
 }
 
@@ -51,6 +55,8 @@ const RESERVED_BYTES: ReservedBytes = {
   [AccountName.Whirlpool]: 0,
   [AccountName.FeeTier]: 0,
   [AccountName.PositionBundle]: 64,
+  [AccountName.WhirlpoolsConfigExtension]: 512,
+  [AccountName.TokenBadge]: 128,
 };
 
 type ReservedBytes = {
@@ -193,3 +199,20 @@ export type PositionBundleData = {
   positionBundleMint: PublicKey;
   positionBitmap: number[];
 };
+
+/**
+ * @category Solana Accounts
+ */
+export type WhirlpoolsConfigExtensionData = {
+  whirlpoolsConfig: PublicKey;
+  configExtensionAuthority: PublicKey;
+  tokenBadgeAuthority: PublicKey;
+}
+
+/**
+ * @category Solana Accounts
+ */
+export type TokenBadgeData = {
+  whirlpoolsConfig: PublicKey;
+  tokenMint: PublicKey;
+}

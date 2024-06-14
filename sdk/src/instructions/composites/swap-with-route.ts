@@ -2,18 +2,20 @@ import {
   AddressUtil,
   EMPTY_INSTRUCTION,
   Percentage,
+  ResolvedTokenAddressInstruction,
   TokenUtil,
   TransactionBuilder,
   ZERO,
 } from "@orca-so/common-sdk";
-import { ResolvedTokenAddressInstruction } from "@orca-so/common-sdk/dist/helpers/token-instructions";
 import {
   Account,
   NATIVE_MINT,
+  TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
+  createCloseAccountInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import BN from "bn.js";
 import {
   AtaAccountInfo,
@@ -50,6 +52,7 @@ export async function getSwapFromRoute(
 ) {
   const { route, wallet, resolvedAtaAccounts, slippage } = params;
   const requiredAtas = new Set<string>();
+  const requiredIntermediateAtas = new Set<string>();
   const requiredTickArrays = [];
   let hasNativeMint = false;
   let nativeMintAmount = new BN(0);
@@ -97,11 +100,14 @@ export async function getSwapFromRoute(
         ]
       );
 
-      const inputAmount = quoteOne.amountSpecifiedIsInput ? quoteOne.estimatedAmountIn : quoteOne.otherAmountThreshold;
+      const inputAmount = quoteOne.amountSpecifiedIsInput
+        ? quoteOne.estimatedAmountIn
+        : quoteOne.otherAmountThreshold;
       addOrNative(mintOneA.toString(), quoteOne.aToB ? inputAmount : ZERO);
       addOrNative(mintOneB.toString(), !quoteOne.aToB ? inputAmount : ZERO);
       addOrNative(mintTwoA.toString(), ZERO);
       addOrNative(mintTwoB.toString(), ZERO);
+      requiredIntermediateAtas.add(quoteOne.aToB ? mintOneB.toString() : mintOneA.toString());
     }
   }
 
@@ -120,6 +126,7 @@ export async function getSwapFromRoute(
   const ataInstructionMap = await cachedResolveOrCreateNonNativeATAs(
     wallet,
     requiredAtas,
+    requiredIntermediateAtas,
     (keys) => {
       // TODO: if atas are not up to date, there might be failures, not sure if there's
       // any good way, other than to re-fetch each time?
@@ -132,7 +139,9 @@ export async function getSwapFromRoute(
       } else {
         return ctx.fetcher.getTokenInfos(keys, opts).then((result) => Array.from(result.values()));
       }
-    }
+    },
+    undefined, // use default
+    ctx.accountResolverOpts.allowPDAOwnerAddress
   );
 
   const ataIxes = Object.values(ataInstructionMap);
@@ -141,7 +150,10 @@ export async function getSwapFromRoute(
     const solIx = TokenUtil.createWrappedNativeAccountInstruction(
       wallet,
       nativeMintAmount,
-      await ctx.fetcher.getAccountRentExempt()
+      await ctx.fetcher.getAccountRentExempt(),
+      undefined, // use default
+      undefined, // use default
+      ctx.accountResolverOpts.createWrappedSolAccountMethod
     );
     txBuilder.addInstruction(solIx);
     ataInstructionMap[NATIVE_MINT.toBase58()] = solIx;
@@ -310,19 +322,25 @@ function adjustQuoteForSlippage(quote: SubTradeRoute, slippage: Percentage): Sub
  *
  * @param ownerAddress The user's public key
  * @param tokenMint Token mint address
+ * @param intermediateTokenMints Any mints from the tokenMint set that are intermediates in a two-hop swap
+ * @param getTokenAccounts Function to get token accounts
  * @param payer Payer that would pay the rent for the creation of the ATAs
- * @param modeIdempotent Optional. Use CreateIdempotent instruction instead of Create instruction
+ * @param allowPDAOwnerAddress Optional. Allow PDA to be used as the ATA owner address
  * @returns
  */
 async function cachedResolveOrCreateNonNativeATAs(
   ownerAddress: PublicKey,
   tokenMints: Set<string>,
+  intermediateTokenMints: Set<string>,
   getTokenAccounts: (keys: PublicKey[]) => Promise<Array<AtaAccountInfo | null>>,
-  payer = ownerAddress
+  payer = ownerAddress,
+  allowPDAOwnerAddress: boolean = false
 ): Promise<{ [tokenMint: string]: ResolvedTokenAddressInstruction }> {
   const instructionMap: { [tokenMint: string]: ResolvedTokenAddressInstruction } = {};
   const tokenMintArray = Array.from(tokenMints).map((tm) => new PublicKey(tm));
-  const tokenAtas = tokenMintArray.map((tm) => getAssociatedTokenAddressSync(tm, ownerAddress));
+  const tokenAtas = tokenMintArray.map((tm) =>
+    getAssociatedTokenAddressSync(tm, ownerAddress, allowPDAOwnerAddress)
+  );
   const tokenAccounts = await getTokenAccounts(tokenAtas);
   tokenAccounts.forEach((tokenAccount, index) => {
     const ataAddress = tokenAtas[index]!;
@@ -336,21 +354,32 @@ async function cachedResolveOrCreateNonNativeATAs(
 
       resolvedInstruction = { address: ataAddress, ...EMPTY_INSTRUCTION };
     } else {
-      const createAtaInstruction = createAssociatedTokenAccountInstruction(
+      const tokenMint = tokenMintArray[index];
+      const createAtaInstructions = [createAssociatedTokenAccountInstruction(
         payer,
         ataAddress,
         ownerAddress,
-        tokenMintArray[index]
-      );
+        tokenMint
+      )];
+
+      let cleanupInstructions: TransactionInstruction[] = [];
+      if (intermediateTokenMints.has(tokenMint.toBase58())) {
+        cleanupInstructions = [createCloseAccountInstruction(
+          ataAddress,
+          ownerAddress,
+          ownerAddress
+        )];
+      }
 
       resolvedInstruction = {
         address: ataAddress,
-        instructions: [createAtaInstruction],
-        cleanupInstructions: [],
+        instructions: createAtaInstructions,
+        cleanupInstructions: cleanupInstructions,
         signers: [],
       };
     }
-    instructionMap[tokenMintArray[index].toBase58()] = resolvedInstruction;
+    // WhirlpoolRouter does not handle TokenExtension, so token program is always standard TokenProgram.
+    instructionMap[tokenMintArray[index].toBase58()] = { tokenProgram: TOKEN_PROGRAM_ID, ...resolvedInstruction };
   });
 
   return instructionMap;

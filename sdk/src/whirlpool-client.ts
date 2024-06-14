@@ -40,6 +40,7 @@ export interface WhirlpoolClient {
    * Get a WhirlpoolRouter to help generate the best prices when transacting across a set of pools.
    * @param poolAddresses the addresses of the Whirlpool account addresses to route through
    * @returns a {@link WhirlpoolRouter} instance
+   * @deprecated WhirlpoolRouter will be removed in the future release. Please use endpoint which provides qoutes.
    */
   getRouter: (poolAddresses: Address[]) => Promise<WhirlpoolRouter>;
 
@@ -211,6 +212,7 @@ export interface Whirlpool {
    * @param liquidityInput - an InputLiquidityInput type to define the desired liquidity amount to deposit
    * @param wallet - the wallet to withdraw tokens to deposit into the position and house the position token. If null, the WhirlpoolContext wallet is used.
    * @param funder - the wallet that will fund the cost needed to initialize the position. If null, the WhirlpoolContext wallet is used.
+   * @param positionMint - the mint address of the position token to be created. If null, a new mint address will be created.
    * @return `positionMint` - the position to be created. `tx` - The transaction containing the instructions to perform the operation on chain.
    */
   openPosition: (
@@ -218,7 +220,8 @@ export interface Whirlpool {
     tickUpper: number,
     liquidityInput: IncreaseLiquidityInput,
     wallet?: Address,
-    funder?: Address
+    funder?: Address,
+    positionMint?: PublicKey
   ) => Promise<{ positionMint: PublicKey; tx: TransactionBuilder }>;
 
   /**
@@ -233,6 +236,7 @@ export interface Whirlpool {
    * @param liquidityInput - input that defines the desired liquidity amount and maximum tokens willing to be to deposited.
    * @param wallet - the wallet to withdraw tokens to deposit into the position and house the position token. If null, the WhirlpoolContext wallet is used.
    * @param funder - the wallet that will fund the cost needed to initialize the position. If null, the WhirlpoolContext wallet is used.
+   * @param positionMint - the mint address of the position token to be created. If null, a new mint address will be created.
    * @return `positionMint` - the position to be created. `tx` - The transaction containing the instructions to perform the operation on chain.
    */
   openPositionWithMetadata: (
@@ -240,7 +244,8 @@ export interface Whirlpool {
     tickUpper: number,
     liquidityInput: IncreaseLiquidityInput,
     wallet?: Address,
-    funder?: Address
+    funder?: Address,
+    positionMint?: PublicKey
   ) => Promise<{ positionMint: PublicKey; tx: TransactionBuilder }>;
 
   /**
@@ -255,13 +260,16 @@ export interface Whirlpool {
    * @param destinationWallet - The wallet that the tokens withdrawn and rent lamports will be sent to. If null, the WhirlpoolContext wallet is used.
    * @param positionWallet - The wallet that houses the position token that corresponds to this position address. If null, the WhirlpoolContext wallet is used.
    * @param payer - the wallet that will fund the cost needed to initialize the token ATA accounts. If null, the WhirlpoolContext wallet is used.
+   * @param usePriceSlippage - if true, use the price slippage to calculate the minimum tokens to receive. If false, use the token slippage.
+   * @return transactions that will close the position. The transactions must be executed serially.
    */
   closePosition: (
     positionAddress: Address,
     slippageTolerance: Percentage,
     destinationWallet?: Address,
     positionWallet?: Address,
-    payer?: Address
+    payer?: Address,
+    usePriceSlippage?: boolean
   ) => Promise<TransactionBuilder[]>;
 
   /**
@@ -405,7 +413,7 @@ export interface Position {
    * @param positionWallet - the wallet to that houses the position token. If null, the WhirlpoolContext wallet is used.
    * @param ataPayer - wallet that will fund the creation of the new associated token accounts
    * @param opts an options object to define fetch and cache options when accessing on-chain accounts
-   * @return the transaction that will collect fees from the position
+   * @return the transactions that will collect rewards from the position. The transactions must be executed serially.
    */
   collectRewards: (
     rewardsToCollect?: Address[],
@@ -415,5 +423,5 @@ export interface Position {
     positionWallet?: Address,
     ataPayer?: Address,
     opts?: WhirlpoolAccountFetchOptions
-  ) => Promise<TransactionBuilder>;
+  ) => Promise<TransactionBuilder[]>;
 }

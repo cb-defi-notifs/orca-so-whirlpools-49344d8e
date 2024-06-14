@@ -1,5 +1,6 @@
 import { BN } from "@coral-xyz/anchor";
 import { MathUtil, Percentage } from "@orca-so/common-sdk";
+import { PriceMath } from "./public";
 import {
   getLowerSqrtPriceFromTokenA,
   getLowerSqrtPriceFromTokenB,
@@ -24,8 +25,21 @@ export enum PositionStatus {
 }
 
 export class PositionUtil {
-  private constructor() {}
+  private constructor() { }
 
+  /**
+   * Returns the position status of a given tickCurrentIndex in relation to the tickLowerIndex and tickUpperIndex.
+   * If the tickCurrentIndex is below the range, it returns PositionStatus.BelowRange.
+   * If the tickCurrentIndex is above the range, it returns PositionStatus.AboveRange.
+   * If the tickCurrentIndex is equal to the lower, PositionStatus.InRange is returned.
+   * On the other hand, if the tickCurrentIndex is equal to the upper, PositionStatus.AboveRange is returned.
+   * The relation "PriceMath.tickIndexToSqrtPriceX64(tickCurrentIndex) <= pool's sqrtPrice" is the reason.
+   * 
+   * @param tickCurrentIndex - Whirlpool's current tick index.
+   * @param tickLowerIndex - The tick specifying the lower end of the position range.
+   * @param tickUpperIndex - The tick specifying the upper end of the position range.
+   * @returns Position status in the form of PositionStatus enum.
+   */
   public static getPositionStatus(
     tickCurrentIndex: number,
     tickLowerIndex: number,
@@ -37,6 +51,34 @@ export class PositionUtil {
       return PositionStatus.InRange;
     } else {
       return PositionStatus.AboveRange;
+    }
+  }
+
+  /**
+   * Returns the position status of a given sqrtPriceX64 in relation to the tickLowerIndex and tickUpperIndex.
+   * If the sqrtPriceX64 is below the range, it returns PositionStatus.BelowRange.
+   * If the sqrtPriceX64 is above the range, it returns PositionStatus.AboveRange.
+   * If the sqrtPriceX64 is equal to the lower or upper, PositionStatus.BelowRange or PositionStatus.AboveRange is returned respectively.
+   * 
+   * @param sqrtPriceX64 - X64 representation of the square root of the price.
+   * @param tickLowerIndex - The tick specifying the lower end of the position range.
+   * @param tickUpperIndex - The tick specifying the upper end of the position range.
+   * @returns Position status in the form of PositionStatus enum.
+   */
+  public static getStrictPositionStatus(
+    sqrtPriceX64: BN,
+    tickLowerIndex: number,
+    tickUpperIndex: number
+  ): PositionStatus {
+    const sqrtPriceLowerX64 = PriceMath.tickIndexToSqrtPriceX64(tickLowerIndex);
+    const sqrtPriceUpperX64 = PriceMath.tickIndexToSqrtPriceX64(tickUpperIndex);
+
+    if (sqrtPriceX64.lte(sqrtPriceLowerX64)) {
+      return PositionStatus.BelowRange;
+    } else if (sqrtPriceX64.gte(sqrtPriceUpperX64)) {
+      return PositionStatus.AboveRange;
+    } else {
+      return PositionStatus.InRange;
     }
   }
 }

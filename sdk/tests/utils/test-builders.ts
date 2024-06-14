@@ -7,6 +7,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import Decimal from "decimal.js";
 import { createAndMintToAssociatedTokenAccount, createMint } from ".";
 import {
+  IGNORE_CACHE,
   InitConfigParams,
   InitFeeTierParams,
   InitPoolParams,
@@ -14,9 +15,10 @@ import {
   PoolUtil,
   PriceMath,
   Whirlpool,
-  increaseLiquidityQuoteByInputToken
+  increaseLiquidityQuoteByInputTokenUsingPriceSlippage,
 } from "../../src";
 import { WhirlpoolContext } from "../../src/context";
+import { TokenExtensionUtil } from "../../src/utils/public/token-extension-util";
 
 export interface TestWhirlpoolsConfigKeypairs {
   feeAuthorityKeypair: Keypair;
@@ -215,13 +217,14 @@ export async function initPosition(
     tokenBDecimal,
     tickSpacing
   );
-  const quote = await increaseLiquidityQuoteByInputToken(
+  const quote = await increaseLiquidityQuoteByInputTokenUsingPriceSlippage(
     inputTokenMint,
     new Decimal(inputTokenAmount),
     lowerTick,
     upperTick,
     Percentage.fromFraction(1, 100),
-    pool
+    pool,
+    await TokenExtensionUtil.buildTokenExtensionContext(ctx.fetcher, pool.getData(), IGNORE_CACHE),
   );
 
   // [Action] Open Position (and increase L)

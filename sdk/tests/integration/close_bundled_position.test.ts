@@ -9,7 +9,7 @@ import {
   WhirlpoolContext,
   WhirlpoolIx,
   buildWhirlpoolClient,
-  increaseLiquidityQuoteByInputTokenWithParams,
+  increaseLiquidityQuoteByInputTokenWithParamsUsingPriceSlippage,
   toTx
 } from "../../src";
 import { IGNORE_CACHE } from "../../src/network/public/fetcher";
@@ -23,6 +23,7 @@ import {
 import { defaultConfirmOptions } from "../utils/const";
 import { initTestPool, initializePositionBundle, openBundledPosition, openPosition } from "../utils/init-utils";
 import { mintTokensToTestAccount } from "../utils/test-builders";
+import { TokenExtensionUtil } from "../../src/utils/public/token-extension-util";
 
 describe("close_bundled_position", () => {
   const provider = anchor.AnchorProvider.local(undefined, defaultConfirmOptions);
@@ -196,7 +197,7 @@ describe("close_bundled_position", () => {
 
     // deposit
     const pool = await client.getPool(poolInitInfo.whirlpoolPda.publicKey, IGNORE_CACHE);
-    const quote = increaseLiquidityQuoteByInputTokenWithParams({
+    const quote = increaseLiquidityQuoteByInputTokenWithParamsUsingPriceSlippage({
       tokenMintA: poolInitInfo.tokenMintA,
       tokenMintB: poolInitInfo.tokenMintB,
       sqrtPrice: pool.getData().sqrtPrice,
@@ -206,6 +207,7 @@ describe("close_bundled_position", () => {
       tickCurrentIndex: pool.getData().tickCurrentIndex,
       inputTokenMint: poolInitInfo.tokenMintB,
       inputTokenAmount: new BN(1_000_000),
+      tokenExtensionCtx: await TokenExtensionUtil.buildTokenExtensionContext(fetcher, pool.getData(), IGNORE_CACHE),
     });
 
     await mintTokensToTestAccount(
